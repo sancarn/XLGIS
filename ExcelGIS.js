@@ -19,7 +19,7 @@ XLGIS.test_Office = function(){
               this._private_data.handlers.push(handler);
             }
           },
-          saveAsync:function(){
+          saveAsync:function(optons,callback){
             var This=this;
             this._private_data.handlers.forEach(function(handler){
               handler({
@@ -27,6 +27,7 @@ XLGIS.test_Office = function(){
                 type:"settings-changed"
               });
             });
+            callback()
           },
           refreshAsync:function(){},
           data: {},
@@ -44,6 +45,7 @@ XLGIS.initialise = async function(Office){
   if(!Office){
     var Office = XLGIS.test_Office()
   }
+  XLGIS._Office = Office;
   
   //Get office settings
   let settings = Office.context.document.settings;
@@ -62,9 +64,10 @@ XLGIS.initialise = async function(Office){
       displayName:"Open topo map",
       tilePattern:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
       attributionHTML: 'Map data: &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-    })
-    settings.set("tileLayers",defaults)
-  }
+    });
+    settings.set("tileLayers",defaults);
+  };
+  if(settings.get("frontLayers")==null) settings.set("frontLayers",[]);
   if(settings.get("projections") == null){ //earth (aka latlong) and british national grid.
     settings.set("projections",{
       "Earth"                 : '+proj=longlat +datum=WGS84 +no_defs ',
@@ -96,15 +99,19 @@ XLGIS.initialise = async function(Office){
 
     //Add to map:
     L.control.layers(tileLayers, frontLayers).addTo(XLGIS.map);
+
+    console.warn("Mapper initialisation finished")
+    //...
   });
   
   //Add handlers:
   settings.addHandlerAsync(Office.EventType.SettingsChanged,function(){
     XLGIS.map.setView(settings.get("center"));
+    //...
   });
   
   
-  
+  return true;
 }
 
 //Error handling and listeners.
@@ -333,7 +340,7 @@ projections.add = function(name,projection){
     listener(name,projection);
   });
 };
-projections.on(eventID,func){
+projections.on = function(eventID,func){
   if(!projections.listeners[eventID]) projections.listeners[eventID] = [];
   projections.listeners[eventID].push(func);
 };
