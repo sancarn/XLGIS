@@ -71,7 +71,7 @@ XLGIS.initialise = async function(Office){
       "British National Grid" : '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs '
     });
   };
-  //Save settings
+  //Save settings and then initialise map
   settings.saveAsync(undefined,function(){
     //After save
     //--------------------------------------------
@@ -95,10 +95,8 @@ XLGIS.initialise = async function(Office){
     });
 
     //Add to map:
+    L.control.layers(tileLayers, frontLayers).addTo(XLGIS.map);
   });
-  
-
-  
   
   //Add handlers:
   settings.addHandlerAsync(Office.EventType.SettingsChanged,function(){
@@ -115,6 +113,7 @@ XLGIS.errors.groups = {};
 XLGIS.errors.listeners = {};
 XLGIS.errors.on = function(event,func){this.listeners[event]=func;}
 XLGIS.errors.raise = function(error,groups){
+  error.groups = groups;
   this.push(error);
   console.error(error);
   if(groups){
@@ -197,17 +196,22 @@ XLGIS.layers.getLayer = async function(layer){
         let geodata = XLGIS.projections.project(layer.projection,JSON.parse(geodatas[i]));
         let style   = JSON.parse(styles[i]);
         let geotype = geotypes[i];
-        let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style)
+        let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style);
         if(geopart.__proto__.name!="Error"){
           geometries.push(geopart);
         } else {
-          let errmsg = "Cannot create geopart with args:" + JSON.stringify(geodata) + "::" + geotype;
-          window.XLGIS.errors.raise(new Error(errmsg));
-          console.error(errmsg);
-        }
-      }
+          window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+            "XLGIS.layers",
+            "geotype:"+geotype,
+            "layer.name:"+layer.name,
+            "layer.type:" + layer.type,
+            "layer.projection:" + layer.projection,
+            "layer.displayName:" + layer.displayName
+          ]);
+        };
+      };
       return geometries;
-    })
+    });
   } else if(layer.type=="range"){
     return Excel.run(async function(context){
       //Try to get name
@@ -218,7 +222,7 @@ XLGIS.layers.getLayer = async function(layer){
         address=name.formula;
       } catch(e){
         address="=" + name;
-      }
+      };
       
       //Get sheet:
       var sheet;
@@ -228,7 +232,7 @@ XLGIS.layers.getLayer = async function(layer){
         sheet = context.workbook.worksheets.getItem(sheetName);
       }else{
         sheet = context.workbook.worksheets.getActiveWorksheet();
-      }
+      };
       
       //Get the range and load it's values
       var rng = sheet.getRange(address);
@@ -248,8 +252,9 @@ XLGIS.layers.getLayer = async function(layer){
         };
       };
       if(!headers["Geometry Type"] && !headers["Geometry"] && !headers["Style"]){
-        window.XLGIS.errors.push("Cannot find geometry headers.");
-        console.error("Cannot find geometry headers.");
+        window.XLGIS.errors.raise(new Error("Cannot find geometry headers."),[
+          "XLGIS.layers"
+        ]);
       }
       let geometries = [];
       for(var i=1;i<rng.values.length;i++){
@@ -260,27 +265,57 @@ XLGIS.layers.getLayer = async function(layer){
         if(geopart.__proto__.name!="Error"){
           geometries.push(geopart);
         } else {
-          let errmsg = "Cannot create geopart with args:" + JSON.stringify(geodata) + "::" + geotype;
-          window.XLGIS.errors.push(errmsg);
-          console.error(errmsg);
-        }
-        
-      }
+          window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+            "XLGIS.layers",
+            "geotype:"+geotype,
+            "layer.name:"+layer.name,
+            "layer.type:" + layer.type,
+            "layer.projection:" + layer.projection,
+            "layer.displayName:" + layer.displayName
+          ]);
+        };
+      };
       return geometries;
     })
-  }
-}
+  } else if(layer.type=="json"){
+    //layer.type    --> "json"
+    //layer.name    --> [{t:"Point",d:[50,3],s:{}},{t:"Point",d:[49,4],s:{}},...]
+    //layer.displayName --> "CoolLayer"
+    //layer.projection  --> "Earth"
+    //layer.name ,,,? Where does this come from?
+    let data = JSON.parse(layer.name);
+    var geometries=[]
+    data.forEach(function(geometry){
+      let geodata = XLGIS.projections.project(layer.projection,geometry.d||geometry.data);
+      let geotype = geometry.t || geometry.type;
+      let style = geometry.s || geometry.style;
+      let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style)
+      if(geopart.__proto__.name!="Error"){
+        geometries.push(geopart);
+      } else {
+        window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+          "XLGIS.layers",
+          "geotype:"+geotype,
+          "layer.name:"+layer.name,
+          "layer.type:" + layer.type,
+          "layer.projection:" + layer.projection,
+          "layer.displayName:" + layer.displayName
+        ]);
+      };
+    });
+    return geometries;
+  } else {
+    window.XLGIS.errors.raise(new Error("Unknown layer type '" + layer.type +  "'."),[
+      "XLGIS.layers",
+      "layer.name:"+layer.name,
+      "layer.type:" + layer.type,
+      "layer.projection:" + layer.projection,
+      "layer.displayName:" + layer.displayName
+    ]);
+  };
+};
 
-/*
-XLGIS.addBackLayer = function(displayName,tilePattern,attributionHTML){
-  if(!displayName) return new Error("Display name not given");
-  if(!tilePattern) return new Error("Tile pattern not given");
-  if(!attributionHTML) attributionHTML="";
-  backMaps[displayName] = L.tileLayer(tilePattern, {attribution: attributionHTML});
-}
-*/
-
-//Projections:
+//Proj4 Wrapper for dealing with projections:
 XLGIS.projections = {};
 var projections = XLGIS.projections
 projections.listeners = {
@@ -298,44 +333,11 @@ projections.add = function(name,projection){
     listener(name,projection);
   });
 };
-
 projections.on(eventID,func){
   if(!projections.listeners[eventID]) projections.listeners[eventID] = [];
   projections.listeners[eventID].push(func);
 };
-
 projections.project = function(srcProjection,point){
   let EarthProjection = projection.data["Earth"];
   return proj4(srcProjection,EarthProjection,point);
 };
-
-
-
-
-/* 
-
-projections = {};
-projections["Earth"]                 = '+proj=longlat +datum=WGS84 +no_defs ';
-projections["British National Grid"] = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs ';
-
-//-->
-newPoint = proj4(projections["British National Grid"],projections["Earth"],point)
-
-
-//Created from a table:
-var layerGeometries = [];
-layerGeometries.push(L.marker([39.61, -105.02]));
-layerGeometries.push(L.marker([39.74, -104.99]));
-layerGeometries.push(L.marker([39.73, -104.8]));
-layerGeometries.push(L.marker([39.77, -105.23]));
-
-var foreLayers = {};
-foreLayers["Cool layer name"] = L.layerGroup(layerGeometries);
-
-//...
-
-
-
-L.control.layers(backLayers, foreLayers).addTo(XLGIS.map);
-
-*/
