@@ -1,0 +1,17 @@
+<OfficeApp 
+    xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
+    xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance" 
+    xsi:type="ContentApp">
+    
+  <Id>f418a240-7e70-4737-922b-81186b579be0</Id>
+  <Version>1.0</Version>
+  <ProviderName>Sancarn</ProviderName>
+  <DefaultLocale>en-GB</DefaultLocale>
+  <DisplayName DefaultValue="XLGIS" />
+  <Description DefaultValue="An open source OfficeJS plugin for visualising GIS data inside Excel"/>
+  <AppDomains><AppDomain>https://sancarn.github.io</AppDomain></AppDomains>
+  <DefaultSettings>
+      <SourceLocation DefaultValue="http://sancarn.github.io/XLGIS/XLGIS.html" />
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+</OfficeApp>
