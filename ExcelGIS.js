@@ -1,3 +1,55 @@
+//Leaflet extension for settings cog
+L.Control.SettingsCog = L.Control.extend({
+  onAdd: function(map) {
+    var container = L.DomUtil.create('div');
+    container.classList.add("leaflet-settingsCog")
+    //Basic div properties
+    //container.style.backgroundColor = "ffffff";
+    container.style.width = "27px";
+    container.style.height = "27px";
+    container.style.margin = "10px";
+    container.style.padding = "3px";
+    
+    //Border shadow style
+    container.style.borderColor="rgba(0,0,0,0.2)";
+    container.style.borderWidth="2px";
+    container.style.borderRadius="4px";
+    container.style.borderStyle="solid";
+
+    //Settings image icon
+    container.style.backgroundImage='url("https://cdn2.iconfinder.com/data/icons/web/512/Cog-512.png")';
+    container.style.backgroundRepeat="no-repeat";
+    container.style.backgroundSize = "23px";
+    container.style.backgroundPosition="center";
+    console.log(container.style)
+    
+    
+
+    //element to append events to
+    this.domElement = container;
+
+    //Make callback
+    var This = this;
+    this.callback = function(ev){
+      L.DomEvent.stopPropagation(ev);
+      This.options.handler(ev);
+    };
+    
+    //Register click listener
+    L.DomEvent.on(this.domElement,'click',this.callback);
+
+    return this.domElement;
+  },
+  onRemove: function(map) {
+      //Unregister click listener 
+      L.DomEvent.off(this.domElement,'click',this.callback);
+  }
+});
+
+L.control.settingsCog = function(opts) {
+  return new L.Control.SettingsCog(opts);
+}
+
 var XLGIS = {}
 window.XLGIS = XLGIS;
 XLGIS.test_Office = function(){
@@ -74,6 +126,7 @@ XLGIS.initialise = async function(Office){
       "British National Grid" : '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs '
     });
   };
+
   //Save settings and then initialise map
   settings.saveAsync(undefined,function(){
     //After save
@@ -99,6 +152,14 @@ XLGIS.initialise = async function(Office){
 
     //Add to map:
     L.control.layers(tileLayers, frontLayers).addTo(XLGIS.map);
+
+    //Settings control:
+    L.control.settingsCog({
+      position:"bottomleft",
+      handler:function(){
+        document.querySelector("#settings-main").classList.remove("hidden")
+      }
+    }).addTo(XLGIS.map)
 
     console.warn("Mapper initialisation finished")
     //...

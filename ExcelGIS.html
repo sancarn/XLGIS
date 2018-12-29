@@ -18,5 +18,20 @@
   </head>
   <body>
       <div id="mainMap"></div>
+      <div id="settings-main" class="settings hidden">
+        <button class="settings-close-button" onclick="document.querySelector('#settings-main').classList.add('hidden')">&#10006;</button>
+        <div class="contents-center settings-contents-margin">
+          <div class="settings-main-title">SETTINGS</div>
+          <div class="settings-main-buttoncontainer"><button class="settings-main-button">GENERAL</button></div>
+          <div class="settings-main-buttoncontainer"><button class="settings-main-button">LAYERS</button></div>
+          <div class="settings-main-buttoncontainer"><button class="settings-main-button">PROJECTIONS</button></div>
+        </div>
+      </div>
+      <div id="settings-layers" class="settings hidden">
+
+      </div>
+      <div id="settings-projections" class="settings hidden">
+
+      </div>
   </body>
 </html>
