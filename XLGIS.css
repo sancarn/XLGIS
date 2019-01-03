@@ -15,6 +15,7 @@ html, body {
   height:100%;
   background-color:rgb(233, 233, 233);
   z-index: 1000;
+  font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
 }
 .leaflet-settingsCog {
   background-color:rgb(255,255,255);
@@ -89,4 +90,28 @@ html, body {
 .settings-close-button:active {
   outline:none;
   color:rgb(100,100,100);
+}
+
+.settings-layers-contentContainer {
+  padding:50px;
+  font-size:20px;
+  box-sizing: border-box;
+  height:calc(100% - 20vh);
+  overflow:auto;
+}
+
+.settings-layers-subtitle {
+  font-size: 20px;
+  font-weight: bold;
+  padding: 10px;
+}
+.help-info {
+  background-color:rgb(176, 255, 255);
+  color:black;
+  border-color:rgb(69, 69, 252);
+  border-width: 1;
+  border-style: solid;
+  border-radius:5px;
+  padding:10px;
+  margin:10px;
 }

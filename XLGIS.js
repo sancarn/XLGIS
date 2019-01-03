@@ -21,8 +21,6 @@ L.Control.SettingsCog = L.Control.extend({
     container.style.backgroundRepeat="no-repeat";
     container.style.backgroundSize = "23px";
     container.style.backgroundPosition="center";
-    console.log(container.style)
-    
     
 
     //element to append events to
@@ -66,22 +64,60 @@ XLGIS.test_Office = function(){
           set: function(name,value){
             this.data[name]=value;
           },
-          addHandlerAsync:function(type,handler){
-            if(type=="settings-changed"){
-              this._private_data.handlers.push(handler);
+          addHandlerAsync:function(type,handler,options,callback){
+            if(!options)options={};
+            try {
+              if(type=="settings-changed"){
+                this._private_data.handlers.push(handler);
+              };
+              callback({
+                result:"succeeded",
+                asyncContext: options["asyncContext"],
+                value:undefined,
+                error:undefined
+              });
+            } catch(e){
+              callback({
+                result:"failed",
+                error:e,
+                value:undefined,
+                asyncContext: options["asyncContext"]
+              });
             }
           },
-          saveAsync:function(optons,callback){
-            var This=this;
-            this._private_data.handlers.forEach(function(handler){
-              handler({
-                settings:This,
-                type:"settings-changed"
+          saveAsync:function(options,callback){
+            if(!options)options={};
+            try {
+              var This=this;
+              this._private_data.handlers.forEach(function(handler){
+                handler({
+                  settings:This,
+                  type:"settings-changed"
+                });
               });
-            });
-            callback()
+              callback({
+                status:"succeeded",
+                value:This,
+                error:undefined,
+                asyncContext:options["asyncContext"]
+              });
+              return This;
+            } catch (e){
+              callback({
+                status:"failed",
+                value:This,
+                error:e,
+                asyncContext:options["asyncContext"]
+              });
+              return undefined;
+            }
           },
-          refreshAsync:function(){},
+          refreshAsync:function(callback){
+            return callback(this);
+          },
+          remove:function(name){
+            delete this.data[name];
+          },
           data: {},
           _private_data: {
             handlers:[]
@@ -101,6 +137,7 @@ XLGIS.initialise = async function(Office){
   
   //Get office settings
   let settings = Office.context.document.settings;
+  XLGIS._Settings = settings;
 
   //If settings don't exist, add them.
   if(settings.get("center") == null) settings.set("center",[51.505, -0.09]);
@@ -171,7 +208,7 @@ XLGIS.initialise = async function(Office){
     //...
   });
   
-  
+  callTestCase()
   return true;
 }
 
@@ -235,10 +272,11 @@ XLGIS.layers.getLayerPart = function(geotype,geometry,options){
 XLGIS.layers.getLayer = async function(layer){
   /*
   {
-    displayName:"",
     type: "table/range",
-    name: "Asdf",
-    projection: "projectionName"
+    name: "name of table, range or range address",
+    displayName:"Layer name as in leaflet control",
+    projection: "projectionName",
+
   }
   */
  //By Default have a click handler on points which writes the ID of the point into the range named "<<layerName>>_click"
@@ -346,11 +384,10 @@ XLGIS.layers.getLayer = async function(layer){
       return geometries;
     })
   } else if(layer.type=="json"){
-    //layer.type    --> "json"
-    //layer.name    --> [{t:"Point",d:[50,3],s:{}},{t:"Point",d:[49,4],s:{}},...]
+    //layer.type        --> "json"
+    //layer.name        --> [{t:"Point",d:[50,3],s:{}},{t:"Point",d:[49,4],s:{}},...]
     //layer.displayName --> "CoolLayer"
     //layer.projection  --> "Earth"
-    //layer.name ,,,? Where does this come from?
     let data = JSON.parse(layer.name);
     var geometries=[]
     data.forEach(function(geometry){
@@ -409,3 +446,179 @@ projections.project = function(srcProjection,point){
   let EarthProjection = projection.data["Earth"];
   return proj4(srcProjection,EarthProjection,point);
 };
+
+XLGIS.forms = {
+  openForm:function(form){
+    if(form.id    ) document.getElementById(form.id    ).classList.remove("hidden");
+    if(form.parent) document.getElementById(form.parent).classList.add("hidden");
+  },
+  closeForm:function(form){
+    if(form.parent) document.getElementById(form.parent).classList.remove("hidden");
+    if(form.id    ) document.getElementById(form.id    ).classList.add("hidden");
+  },
+  Settings: {
+    id:"settings-main",
+    Open: function(){XLGIS.forms.openForm(this) },
+    Close:function(){XLGIS.forms.closeForm(this)},
+    General: {
+      parent:"settings-main",
+      id:"settings-general",
+      Open: function(){XLGIS.forms.openForm(this) },
+      Close:function(){XLGIS.forms.closeForm(this)},
+    },
+    Layers:{
+      parent:"settings-main",
+      id:"settings-layers",
+      Open: function(){
+        //Instantiate grids
+        $("#grid-tileLayers").jsGrid({
+          autoload:true,
+          editing:true,
+          inserting:true,
+          width:"100%",
+          controller:{
+            loadData:function(){
+              var data = XLGIS._Settings.get("tileLayers");
+              data = data.map(function(el){
+                var newEl = {};
+                newEl["Display Name"] = el.displayName;
+                newEl["Tile URL"]     = el.tilePattern;
+                newEl["Attribution"]  = el.attributionHTML;
+                return newEl;
+              });
+              return data;
+            },
+            insertItem:function(){
+
+            },
+            updateItem:function(){
+
+            }
+          },
+          fields:[
+            {type:"text", name:"Display Name"},
+            {type:"text", name:"Tile URL"},
+            {type:"text", name:"Attribution"},
+            {type:"control"}
+          ]
+
+        })
+        $("#grid-frontLayers").jsGrid({
+          autoload:true,
+          editing:true,
+          inserting:true,
+          width:"100%",
+          controller:{
+            loadData:function(){
+              var data = XLGIS._Settings.get("frontLayers");
+              data = data.map(function(el){
+                var newEl = {};
+                newEl.id = el.id;
+                newEl.Data=el.name;
+                newEl.Type=el.type;
+                newEl.Projection=el.projection;
+                newEl["Display Name"]=el.displayName;
+                return newEl;
+              }); 
+              return data;
+            },
+            insertItem:function(item,otherArg){
+              return XLGIS._Settings.refreshAsync(async function(settings){
+                var frontLayers = settings.get("frontLayers")
+                var countOfDupes = frontLayers.filter(e=>e.displayName==item["Display Name"]).length
+                if(countOfDupes>0){
+                  setTimeout(function(){
+                    setTimeout(function(){
+                      $("#grid-frontLayers>.jsgrid-grid-header").notify("Cannot add 2 rows with the same display name.");
+                    });
+                    $("#grid-frontLayers").jsGrid();
+                  });
+                } else {
+                  var newSetting = {};
+                  newSetting.displayName = item["Display Name"];
+                  newSetting.name        = item["Data"];
+                  newSetting.type        = item["Type"];
+                  newSetting.projection  = item["Projection"];
+                  frontLayers.push(newSetting)
+                  settings.set("frontLayers",frontLayers);
+                  return settings.saveAsync(undefined,async function(){
+                    return item;
+                  });
+                };
+              });
+            },
+            updateItem:function(item){
+              debugger;
+              console.log(item);
+            }
+          },
+          fields:[
+            {type:"text", name:"Display Name"},
+            {type:"select", name:"Type", items:[
+              {Name:"TABLE",Type:"TABLE"},
+              {Name:"RANGE",Type:"RANGE"},
+              {Name:"JSON",Type:"JSON"}
+            ], valueField:"Type", textField:"Name"},
+            {type:"text", name:"Data"},
+            {type:"select", name:"Projection", items:
+              Object.keys(XLGIS._Settings.get("projections")).map(function(key){
+                return {Name:key,Type:key};
+              }),
+            valueField:"Type", textField:"Name"},
+            {type:"control"}
+          ]
+        });
+
+        //Show form
+        XLGIS.forms.openForm(this)
+      },
+      Close:function(){
+        //Hide form
+        XLGIS.forms.closeForm(this)
+        
+        //Destroy grids
+      }
+    },
+    Projections:{
+      parent:"settings-main",
+      id:"settings-projections",
+      Open: function(){XLGIS.forms.openForm(this) },
+      Close:function(){XLGIS.forms.closeForm(this)}
+    },
+    About:{
+      parent:"settings-main",
+      id:"settings-about",
+      Open: function(){XLGIS.forms.openForm(this) },
+      Close:function(){XLGIS.forms.closeForm(this)}
+    }
+  }
+}
+
+function callTestCase(){
+  XLGIS._Settings.data.frontLayers.push({
+    name:"coolLayer",
+    type:"TABLE",
+    projection:"Earth",
+    displayName:"Cool layer"
+  });
+  window.setTimeout(function(){
+    XLGIS.forms.Settings.Open();
+    XLGIS.forms.Settings.Layers.Open();
+  },100)
+}
+
+
+/*
+//LAYERS GRID VIEW:
+
+Example:
+------------
+XLGIS._Settings.data.frontLayers.push({
+  name:"coolLayer",
+  type:"table",
+  projection:"Earth",
+  displayName:"Cool layer"
+})
+
+
+*/
