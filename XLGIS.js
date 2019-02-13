@@ -443,8 +443,8 @@ projections.on = function(eventID,func){
   projections.listeners[eventID].push(func);
 };
 projections.project = function(srcProjection,point){
-  let EarthProjection = projection.data["Earth"];
-  return proj4(srcProjection,EarthProjection,point);
+  let EarthProjection = new Proj4.Proj(projection.data["Earth"]);
+  return proj4(new Proj4.Proj(srcProjection),EarthProjection,point);
 };
 
 XLGIS.forms = {
