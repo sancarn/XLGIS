@@ -1,0 +1,117 @@
+html, body {
+  width: 100%;
+  height: 100%;
+  margin:0;
+}
+#mainMap {
+  width: 100%;
+  height: 100%;
+}
+.settings {
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background-color:rgb(233, 233, 233);
+  z-index: 1000;
+  font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+}
+.leaflet-settingsCog {
+  background-color:rgb(255,255,255);
+}
+.leaflet-settingsCog:hover{
+  background-color:rgba(255, 255, 255, 0.6);
+}
+.leaflet-settingsCog:active{
+  background-color:rgba(255, 255, 255, 0.2);
+}
+
+.hidden {
+  display:none;
+}
+
+.contents-center {
+  text-align:center;
+}
+.settings-contents-margin {
+  margin:2vh;
+}
+
+/*******************/
+/*  SETTINGS MAIN  */
+/*******************/
+
+.settings-main-title {
+  padding:5px;
+  font-size:10vh;
+  font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif
+}
+
+.settings-main-buttoncontainer{
+  padding:2px;
+  background-color:rgb(222,222,222);
+}
+.settings-main-buttoncontainer:hover{
+  background-color:"";
+  background-color:rgb(244,244,244);
+}
+.settings-main-buttoncontainer:active{
+  background-color:"";
+  background-color:rgb(255,255,255);
+}
+
+.settings-main-button{
+  width:100%;
+  height:10%;
+  background:none;
+  border:none;
+  font-size: 7vh;
+  font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif
+}
+.settings-main-button:focus{
+  outline:none;
+}
+
+.settings-close-button {
+  position:absolute;
+  right:10;
+  z-index: inherit;
+  background:none;
+  border:none;
+  font-size:10vh;
+}
+.settings-close-button:focus {
+  outline:none;
+}
+.settings-close-button:hover {
+  color:rgb(50,50,50);
+}
+.settings-close-button:active {
+  outline:none;
+  color:rgb(100,100,100);
+}
+
+.settings-layers-contentContainer {
+  padding:50px;
+  font-size:20px;
+  box-sizing: border-box;
+  height:calc(100% - 20vh);
+  overflow:auto;
+}
+
+.settings-layers-subtitle {
+  font-size: 20px;
+  font-weight: bold;
+  padding: 10px;
+}
+.help-info {
+  background-color:rgb(176, 255, 255);
+  color:black;
+  border-color:rgb(69, 69, 252);
+  border-width: 1;
+  border-style: solid;
+  border-radius:5px;
+  padding:10px;
+  margin:10px;
+}
