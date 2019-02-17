@@ -30,8 +30,10 @@
     <link rel="stylesheet" href="XLGIS.css"/>
     <script src="XLGIS.js"></script>
     <script>
-      window.onload = function(){
-        window.initialised = XLGIS.initialise()
+      Office.onload = function(){
+        $(function(){
+          window.initialised = XLGIS.initialise();
+        });
       };
     </script>
   </head>

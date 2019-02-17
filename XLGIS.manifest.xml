@@ -7,11 +7,13 @@
   <Version>1.0</Version>
   <ProviderName>Sancarn</ProviderName>
   <DefaultLocale>en-GB</DefaultLocale>
-  <DisplayName DefaultValue="XLGIS" />
+  <DisplayName DefaultValue="XLGIS 0.0.1" />
   <Description DefaultValue="An open source OfficeJS plugin for visualising GIS data inside Excel"/>
   <AppDomains><AppDomain>https://sancarn.github.io</AppDomain></AppDomains>
   <DefaultSettings>
-      <SourceLocation DefaultValue="http://sancarn.github.io/XLGIS/XLGIS.html" />
+      <!-- \\PE-D0263\ ==>Cannot find ‘file://pe-d0263/Users/sancarn/Documents/GitHub/XLGIS/dist/XLGIS.html?_host_Info=Excel$Win32$16.01$en-US’. -->
+      <SourceLocation 
+        DefaultValue="file://C:\Users\sancarn\Documents\GitHub\XLGIS\dist\XLGIS.html" />
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
 </OfficeApp>
