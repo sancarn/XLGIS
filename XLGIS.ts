@@ -1,4 +1,24 @@
 import OfficeEmulator from "./libs/OfficeEmulator"
+import * as L from 'leaflet';
+import * as Proj4 from 'proj4'
+
+
+interface ILayer {
+  displayName:string,
+  tilePattern:string,
+  attributionHTML: string
+}
+interface IGenericObject {
+  [key:string]: any
+}
+interface IGenericListeners {
+  [key:string]:Function[]
+}
+interface XLGIS_ctorOpts {
+  tests:Function[]
+}
+
+
 
 //Leaflet extension for settings cog
 var LeafletHelpers = {
@@ -31,7 +51,7 @@ var LeafletHelpers = {
 
       //Make callback
       var This = this;
-      this.callback = function(ev){
+      this.callback = function(ev : any){
         L.DomEvent.stopPropagation(ev);
         This.options.handler(ev);
       };
@@ -45,7 +65,7 @@ var LeafletHelpers = {
         //Unregister click listener 
         L.DomEvent.off(this.domElement,'click',this.callback);
     }
-  });
+  }),
 
   settingsCog: function(opts:any) {
     return new this.SettingsCog(opts);
@@ -54,337 +74,443 @@ var LeafletHelpers = {
 
 
 class XLGIS {
-  static initialise(){
+  public _Office : any;
+  public _Settings : any;
+  public map : L.Map;
+  public mapElement : HTMLElement;
+  public errors : XLGIS_Errors = new XLGIS_Errors(this);
+  public data : XLGIS_Data = new XLGIS_Data(this);
+  public projections : XLGIS_Projections = new XLGIS_Projections(this);
+  public layers : XLGIS_Layers = new XLGIS_Layers(this);
+
+  public static Errors : XLGIS_Errors;
+  public static Data : XLGIS_Data;
+  public static Projections : XLGIS_Projections;
+  public static Layers : XLGIS_Layers;
+
+  constructor(opts : XLGIS_ctorOpts){
     if(!Office) var Office=OfficeEmulator;
     
+    //Save for debugging:
+    this._Office = Office;
 
+    //Get office settings:
+    let settings = Office.context.document.settings;
+    this._Settings = settings;
+    
+    //If settings don't exist, add them.
+    if(settings.get("center") == null) settings.set("center",[51.505, -0.09]);
+    if(settings.get("zoom")   == null) settings.set("zoom",13);
+    if(settings.get("tileLayers")==null){ //tileLayers open street and topo maps as default
+      var defaults = [];
+      defaults.push({
+        displayName:"Open street map",
+        tilePattern:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attributionHTML:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      });
+      defaults.push({
+        displayName:"Open topo map",
+        tilePattern:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attributionHTML: 'Map data: &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+      });
+      settings.set("tileLayers",defaults);
+    };
+    if(settings.get("frontLayers")==null) settings.set("frontLayers",[]);
+    if(settings.get("projections") == null){ //earth (aka latlong) and british national grid.
+      settings.set("projections",{
+        "Earth"                 : '+proj=longlat +datum=WGS84 +no_defs ',
+        "British National Grid" : '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs '
+      });
+    };
+
+    //Save settings and then initialise map
+    settings.saveAsync(undefined,function(){
+      //After save
+      //--------------------------------------------
+      //Create leaflet map
+      this.mapElement = document.getElementById("mainMap");
+      this.map = L.map('mainMap');
+
+      //setView to settings or default center.
+      this.map.setView(settings.get("center"), settings.get("zoom"));
+
+      //Back layers
+      var tileLayers : IGenericObject = {};
+      settings.get("tileLayers").forEach(function(layer : ILayer){
+        tileLayers[layer.displayName] = L.tileLayer(layer.tilePattern, {attribution: layer.attributionHTML});
+      });
+
+      //Front layers
+      var frontLayers : IGenericObject = {};
+      settings.get("frontLayers").forEach(function(layer:ILayer){
+        frontLayers[layer.displayName] = L.layerGroup(this.layers.getLayer(layer));
+      });
+
+      //Add to map:
+      L.control.layers(tileLayers, frontLayers).addTo(this.map);
+
+      //Settings control:
+      LeafletHelpers.settingsCog({
+        position:"bottomleft",
+        handler:function(){
+          document.querySelector("#settings-main").classList.remove("hidden")
+        }
+      }).addTo(this.map)
+
+      console.info("Mapper initialisation finished")
+    });
+
+    //Add handlers:
+    settings.addHandlerAsync(Office.EventType.SettingsChanged,function(){
+      this.map.setView(settings.get("center"));
+    },null,null);
+
+    
+
+    //Call optional tests:
+    opts.tests.forEach(function(func){
+      func();
+    })
   }
 }
 
 
-XLGIS.initialise = async function(Office){
-  if(!Office){
-    var Office = XLGIS.test_Office()
-  }
-  XLGIS._Office = Office;
+
+type IXLGIS_Error = Error & {groups:string[]}
+interface IXLGISError_Groups {
+  [key:string]:IXLGIS_Error[]
+}
+
+class XLGIS_Errors {
+  public value : IXLGIS_Error[] = []
+  public parent : XLGIS
+  private groups : IXLGISError_Groups = {}
+  private listeners : IGenericListeners = {}
   
-  //Get office settings
-  let settings = Office.context.document.settings;
-  XLGIS._Settings = settings;
+  //Set parent
+  constructor(parent:XLGIS){
+    this.parent = parent;
+  }
 
-  //If settings don't exist, add them.
-  if(settings.get("center") == null) settings.set("center",[51.505, -0.09]);
-  if(settings.get("zoom")   == null) settings.set("zoom",13);
-  if(settings.get("tileLayers")==null){ //tileLayers open street and topo maps as default
-    var defaults = [];
-    defaults.push({
-      displayName:"Open street map",
-      tilePattern:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      attributionHTML:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  /**
+   * Listen to an event from this class. This will attach to all errors raised by XLGIS object.
+   * @param {string} event   - Error to listen to.
+   * @param {Function} func  - Function to execute.
+   */
+  on(event:string,func:Function){
+    if(!this.listeners[event]) this.listeners[event] = [];
+    this.listeners[event].push(func);
+  }
+  
+  /**
+   * Raise an error. Use this function to raise XLGIS errors.
+   * @param {IXLGIS_Error} error  - The error to raise. E.G. `new Error("hello world")`.
+   * @param {string[]}     groups - A set of groups to help find the error raised.
+   */
+  raise(error:IXLGIS_Error,groups:string[]){
+    //Set groups parameter, useful for seeing which groups the error is part of
+    error.groups = groups;
+
+    //Push error to error list
+    this.value.push(error);
+
+    //Log erro in console
+    console.error(error);
+
+    //If groups exist, push error to all groups this error is part of.
+    if(groups){
+      let This = this
+      groups.forEach(function(group){
+        if(!This.groups[group]) This.groups[group]=[];
+        This.groups[group].push(error);
+      });
+    };
+    
+    //Call on-raise events
+    this.listeners['raise'].forEach(listener=>listener(error,groups));
+  }
+}
+
+class XLGIS_Data {
+    public parent : XLGIS
+    public value = {}
+    constructor(parent : XLGIS){
+      this.parent = parent;
+    }
+    async getNamedDatabodies(){
+      return Excel.run(async function(context){
+        var names = context.workbook.names;
+        var tables = context.workbook.tables;
+        names.load("items");
+        tables.load("items");
+        await context.sync();
+        return names.items.map(function (namedRange) {
+            return { name: namedRange.name, type: "namedRange" }
+        }).concat(tables.items.map(function (table) {
+            return { name: table.name, type: "table" }
+        }));
+      });
+    };
+}
+
+//Proj4 Wrapper for dealing with projections:
+type XLGIS_ProjectionPoint = {x:number, y:number}
+class XLGIS_Projections {
+  public parent : XLGIS
+  public listeners : IGenericListeners = {}
+  public data : IGenericObject = {}
+
+  constructor(parent : XLGIS){
+    this.parent = parent;
+  }
+  add(name:string, projection:string){
+    //Save data
+    this.data[name]=projection;
+
+    //Call listener
+    this.listeners["add"].forEach(function(listener:Function){
+      listener(name,projection);
     });
-    defaults.push({
-      displayName:"Open topo map",
-      tilePattern:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-      attributionHTML: 'Map data: &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-    });
-    settings.set("tileLayers",defaults);
-  };
-  if(settings.get("frontLayers")==null) settings.set("frontLayers",[]);
-  if(settings.get("projections") == null){ //earth (aka latlong) and british national grid.
-    settings.set("projections",{
-      "Earth"                 : '+proj=longlat +datum=WGS84 +no_defs ',
-      "British National Grid" : '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs '
-    });
-  };
+  }
+  on(eventID:string,func:Function){
+    if(!this.listeners[eventID]) this.listeners[eventID]=[];
+    this.listeners[eventID].push(func);
+  }
+  project(srcProjection:string,point:XLGIS_ProjectionPoint){
+    //@ts-ignore
+    let EarthProjection = new Proj4.Proj(this.data["Earth"]);
+    
+    //@ts-ignore
+    return proj4(new Proj4.Proj(srcProjection),EarthProjection,point);
+  }
+  revProject(finProjection:string,point:XLGIS_ProjectionPoint){
+    //@ts-ignore
+    let EarthProjection = new Proj4.Proj(this.data["Earth"]);
+    
+    //@ts-ignore
+    return proj4(EarthProjection,new Proj4.Proj(finProjection),point);
+  }
+}
 
-  //Save settings and then initialise map
-  settings.saveAsync(undefined,function(){
-    //After save
-    //--------------------------------------------
-    //Create leaflet map
-    XLGIS.mapElement = document.getElementById("mainMap");
-    XLGIS.map = L.map('mainMap');
 
-    //setView to settings or default center.
-    XLGIS.map.setView(settings.get("center"), settings.get("zoom"));
 
-    //Back layers
-    var tileLayers = {};
-    settings.get("tileLayers").forEach(function(layer){
-      tileLayers[layer.displayName] = L.tileLayer(layer.tilePattern, {attribution: layer.attributionHTML});
-    });
 
-    //Front layers
-    var frontLayers = {};
-    settings.get("frontLayers").forEach(function(layer){
-      frontLayers[layer.displayName] = L.layerGroup(XLGIS.layers.getLayer(layer));
-    });
 
-    //Add to map:
-    L.control.layers(tileLayers, frontLayers).addTo(XLGIS.map);
 
-    //Settings control:
-    LeafletHelpers.settingsCog({
-      position:"bottomleft",
-      handler:function(){
-        document.querySelector("#settings-main").classList.remove("hidden")
+
+interface IXLGISLayer {
+  type : "table" | "range"
+  name: string //Name of table, name of range or range address
+  displayName: string
+  projection: string
+
+}
+
+enum XLGISGeoType {
+  Point="POINT",
+  Line="LINE",
+  Polygon="POLYGON",
+  Circle="CIRCLE",
+  Rect="RECT",
+  Marker="MARKER",
+  Image="IMAGE"
+} 
+
+class XLGIS_Layers {
+  public parent : XLGIS
+  public value : ILayer[] = []
+  constructor(parent : XLGIS){
+    this.parent = parent
+  }
+  getLayerPart(geotype : string,geometry:any, options:any) : L.Layer{
+    try {
+      geotype = geotype.toUpperCase();
+      switch(geotype){
+        case XLGISGeoType.Point:
+          return L.circleMarker(geometry,options);
+        case XLGISGeoType.Line:
+          return L.polyline(geometry,options);
+        case XLGISGeoType.Polygon:
+          return L.polygon(geometry,options);
+        case XLGISGeoType.Circle:
+          return L.circle(geometry,options);
+        case XLGISGeoType.Rect:
+          return L.rectangle(geometry,options);
+        case XLGISGeoType.Marker:
+          return L.marker(geometry,options);
+        case XLGISGeoType.Image:
+          return L.marker(geometry,options);
+        default:
+          return null
       }
-    }).addTo(XLGIS.map)
+    } catch(e){
+      return e;
+    }
+  }
+  /**
+   * Creates a new layer and initialises all settings
+   */
+  public newLayer(layerName){
+    //initialise settings
+  }
+  public async getLayer(layer : IXLGISLayer) {
+    let This = this;
+    //By Default have a click handler on points which writes the ID of the point into the range named "<<layerName>>_click"
+    if(layer.type=="table"){
+      let geometries = await Excel.run(async function(context){
+        var table = context.workbook.tables.getItem(layer.name);
+        var geotype = table.columns.getItem("Geometry Type");
+        var geometry = table.columns.getItem("Geometry");
+        var style = table.columns.getItem("Style");
 
-    console.warn("Mapper initialisation finished")
-    //...
-  });
-  
-  //Add handlers:
-  settings.addHandlerAsync(Office.EventType.SettingsChanged,function(){
-    XLGIS.map.setView(settings.get("center"));
-    //...
-  });
-  
-  callTestCase()
-  return true;
+        geotype.load("values");
+        geometry.load("values");
+        style.load("values");
+
+        await context.sync();
+
+        let geotypes = geotype.values.slice(1);
+        let geodatas = geometry.values.slice(1);
+        let styles   = style.values.slice(1);
+        
+        let geometries = [];
+        for(var i=0;i<geotypes.length;i++){
+          let geodata = This.parent.projections.project(layer.projection,JSON.parse(geodatas[i]));
+          let style   = JSON.parse(styles[i]);
+          let geotype = geotypes[i];
+          let geopart = This.parent.layers.getLayerPart(geotype, geodata,style);
+          if(geopart.__proto__.name!="Error"){
+            geometries.push(geopart);
+          } else {
+            This.parent.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+              "XLGIS.layers",
+              "geotype:"+geotype,
+              "layer.name:"+layer.name,
+              "layer.type:" + layer.type,
+              "layer.projection:" + layer.projection,
+              "layer.displayName:" + layer.displayName
+            ]);
+          };
+        };
+        return geometries;
+      });
+      return L.layerGroup(geometries)
+    } else if(layer.type=="range"){
+      let geometries = await Excel.run(async function(context){
+        //Try to get name
+        try {
+          var name = context.workbook.names.getItem(layer.name);
+          name.load("formula");
+          await context.sync();
+          address=name.formula;
+        } catch(e){
+          address="=" + name;
+        };
+        
+        //Get sheet:
+        var sheet;
+        var matches = /=(.+)\!/.exec(address);
+        if(matches){
+          var sheetName = matches[1]
+          sheet = context.workbook.worksheets.getItem(sheetName);
+        }else{
+          sheet = context.workbook.worksheets.getActiveWorksheet();
+        };
+        
+        //Get the range and load it's values
+        var rng = sheet.getRange(address);
+        rng.load("values");
+        await context.sync();
+        
+        //Get headers
+        var headers = {};
+        for(var i=0;i<rng.values[0].length;i++){
+          var header=rng.values[0][i];
+          if(header=="Geometry Type"){
+            headers["Geometry Type"]=i;
+          }else if(header=="Geometry"){
+            headers["Geometry"]=i;
+          }else if(header=="Style"){
+            headers["Style"]=i;
+          };
+        };
+        if(!headers["Geometry Type"] && !headers["Geometry"] && !headers["Style"]){
+          This.parent.errors.raise(new Error("Cannot find geometry headers."),[
+            "XLGIS.layers"
+          ]);
+        }
+        let geometries = [];
+        for(var i=1;i<rng.values.length;i++){
+          let geodata = XLGIS.projections.project(layer.projection,JSON.parse(rng.values[i][headers["Geometry"]]));
+          let style   = JSON.parse(rng.values[i][headers["Style"]]);
+          let geotype = rng.values[i][headers["Geometry Type"]];
+          let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style)
+          if(geopart.__proto__.name!="Error"){
+            geometries.push(geopart);
+          } else {
+            This.parent.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+              "XLGIS.layers",
+              "geotype:"+geotype,
+              "layer.name:"+layer.name,
+              "layer.type:" + layer.type,
+              "layer.projection:" + layer.projection,
+              "layer.displayName:" + layer.displayName
+            ]);
+          };
+        };
+        return geometries;
+      });
+      return L.layerGroup(geometries)
+    } else if(layer.type=="json"){
+      //layer.type        --> "json"
+      //layer.name        --> [{t:"Point",d:[50,3],s:{}},{t:"Point",d:[49,4],s:{}},...]
+      //layer.displayName --> "CoolLayer"
+      //layer.projection  --> "Earth"
+      let data = JSON.parse(layer.name);
+      var geometries=[]
+      data.forEach(function(geometry){
+        let geodata = This.parent.projections.project(layer.projection,geometry.d||geometry.data);
+        let geotype = geometry.t || geometry.type;
+        let style = geometry.s || geometry.style;
+        let geopart = This.parent.layers.getLayerPart(geotype, geodata,style)
+        if(geopart.__proto__.name!="Error"){
+          geometries.push(geopart);
+        } else {
+          window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
+            "XLGIS.layers",
+            "geotype:"+geotype,
+            "layer.name:"+layer.name,
+            "layer.type:" + layer.type,
+            "layer.projection:" + layer.projection,
+            "layer.displayName:" + layer.displayName
+          ]);
+        };
+      });
+      return L.layerGroup(geometries);
+    } else {
+      This.parent.errors.raise(new Error("Unknown layer type '" + layer.type +  "'."),[
+        "XLGIS.layers",
+        "layer.name:"+layer.name,
+        "layer.type:" + layer.type,
+        "layer.projection:" + layer.projection,
+        "layer.displayName:" + layer.displayName
+      ]);
+    };
+  }
+
+
 }
-
-//@ts-ignore
-window.XLGIS = XLGIS;
-
-
-
-//Error handling and listeners.
-XLGIS.errprs : GenericObject
-XLGIS.errors.value = [];
-XLGIS.errors.groups = {};
-XLGIS.errors.listeners = {};
-XLGIS.errors.on = function(event:string,func:Function){this.listeners[event]=func;}
-XLGIS.errors.raise = function(error,groups){
-  error.groups = groups;
-  this.value.push(error);
-  console.error(error);
-  if(groups){
-    groups.forEach(function(group){
-      XLGIS.errors.groups[group]=error;
-    });
-  };
-  this.listeners["raise"].forEach(listener=>listener(error,groups));
-};
-
-//Used by combobox
-XLGIS.data = {}
-XLGIS.data.getNamedDatabodies = async function () {
-  return Excel.run(async function (context) {
-      var names = context.workbook.names;
-      var tables = context.workbook.tables;
-      names.load("items");
-      tables.load("items");
-      await context.sync();
-      return names.items.map(function (namedRange) {
-          return { name: namedRange.name, type: "namedRange" }
-      }).concat(tables.items.map(function (table) {
-          return { name: table.name, type: "table" }
-      }));
-  });
-};
 
 //XL Wrappers around Leaflet
 XLGIS.layers = {}
 XLGIS.layers.getLayerPart = function(geotype,geometry,options){
-  try {
-    if(geotype.toUpperCase()=="POINT"){
-      return L.CircleMarker(L.latlng(geometry),options);
-    }else if(geotype.toUpperCase()=="LINE"){
-      return L.polyline(geometry, options);
-    }else if(geotype.toUpperCase()=="POLYGON"){
-      return L.polygon(geometry, options);
-    }else if(geotype.toUpperCase()=="CIRCLE"){
-      return L.Circle(geometry, options);
-    }else if(geotype.toUpperCase()=="RECT"){
-      return L.rectangle(geometry, options);
-    }else if(geotype.toUpperCase()=="MARKER"){
-      return L.marker(geometry, options);
-    }else if(geotype.toUpperCase()=="IMAGE"){
-      return L.Marker(geometry, options);
-    }
-  } catch(e){
-    return e;
-  }
+  
 };
 XLGIS.layers.getLayer = async function(layer){
-  /*
-  {
-    type: "table/range",
-    name: "name of table, range or range address",
-    displayName:"Layer name as in leaflet control",
-    projection: "projectionName",
 
-  }
-  */
- //By Default have a click handler on points which writes the ID of the point into the range named "<<layerName>>_click"
-  if(layer.type=="table"){
-    return Excel.run(async function(context){
-      var table = context.workbook.tables.getItem(layer.name);
-      var geotype = table.columns.getItem("Geometry Type");
-      var geometry = table.columns.getItem("Geometry");
-      var style = table.columns.getItem("Style");
-
-      geotype.load("values");
-      geometry.load("values");
-      style.load("values");
-
-      await context.sync();
-
-      let geotypes = geotype.values.slice(1);
-      let geodatas = geometry.values.slice(1);
-      let styles   = style.values.slice(1);
-      
-      let geometries = [];
-      for(var i=0;i<geotype.length;i++){
-        let geodata = XLGIS.projections.project(layer.projection,JSON.parse(geodatas[i]));
-        let style   = JSON.parse(styles[i]);
-        let geotype = geotypes[i];
-        let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style);
-        if(geopart.__proto__.name!="Error"){
-          geometries.push(geopart);
-        } else {
-          window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
-            "XLGIS.layers",
-            "geotype:"+geotype,
-            "layer.name:"+layer.name,
-            "layer.type:" + layer.type,
-            "layer.projection:" + layer.projection,
-            "layer.displayName:" + layer.displayName
-          ]);
-        };
-      };
-      return geometries;
-    });
-  } else if(layer.type=="range"){
-    return Excel.run(async function(context){
-      //Try to get name
-      try {
-        var name = context.workbook.names.getItem(layer.name);
-        name.load("formula");
-        await context.sync();
-        address=name.formula;
-      } catch(e){
-        address="=" + name;
-      };
-      
-      //Get sheet:
-      var sheet;
-      var matches = /=(.+)\!/.exec(address);
-      if(matches){
-        var sheetName = matches[1]
-        sheet = context.workbook.worksheets.getItem(sheetName);
-      }else{
-        sheet = context.workbook.worksheets.getActiveWorksheet();
-      };
-      
-      //Get the range and load it's values
-      var rng = sheet.getRange(address);
-      rng.load("values");
-      await context.sync();
-      
-      //Get headers
-      var headers = {};
-      for(var i=0;i<rng.values[0].length;i++){
-        var header=rng.values[0][i];
-        if(header=="Geometry Type"){
-          headers["Geometry Type"]=i;
-        }else if(header=="Geometry"){
-          headers["Geometry"]=i;
-        }else if(header=="Style"){
-          headers["Style"]=i;
-        };
-      };
-      if(!headers["Geometry Type"] && !headers["Geometry"] && !headers["Style"]){
-        window.XLGIS.errors.raise(new Error("Cannot find geometry headers."),[
-          "XLGIS.layers"
-        ]);
-      }
-      let geometries = [];
-      for(var i=1;i<rng.values.length;i++){
-        let geodata = XLGIS.projections.project(layer.projection,JSON.parse(rng.values[i][headers["Geometry"]]));
-        let style   = JSON.parse(rng.values[i][headers["Style"]]);
-        let geotype = rng.values[i][headers["Geometry Type"]];
-        let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style)
-        if(geopart.__proto__.name!="Error"){
-          geometries.push(geopart);
-        } else {
-          window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
-            "XLGIS.layers",
-            "geotype:"+geotype,
-            "layer.name:"+layer.name,
-            "layer.type:" + layer.type,
-            "layer.projection:" + layer.projection,
-            "layer.displayName:" + layer.displayName
-          ]);
-        };
-      };
-      return geometries;
-    })
-  } else if(layer.type=="json"){
-    //layer.type        --> "json"
-    //layer.name        --> [{t:"Point",d:[50,3],s:{}},{t:"Point",d:[49,4],s:{}},...]
-    //layer.displayName --> "CoolLayer"
-    //layer.projection  --> "Earth"
-    let data = JSON.parse(layer.name);
-    var geometries=[]
-    data.forEach(function(geometry){
-      let geodata = XLGIS.projections.project(layer.projection,geometry.d||geometry.data);
-      let geotype = geometry.t || geometry.type;
-      let style = geometry.s || geometry.style;
-      let geopart = XLGIS.layers.getLayerPart(geotype, geodata,style)
-      if(geopart.__proto__.name!="Error"){
-        geometries.push(geopart);
-      } else {
-        window.XLGIS.errors.raise(new Error("Cannot create geopart with args: " + JSON.stringify(geodata)),[
-          "XLGIS.layers",
-          "geotype:"+geotype,
-          "layer.name:"+layer.name,
-          "layer.type:" + layer.type,
-          "layer.projection:" + layer.projection,
-          "layer.displayName:" + layer.displayName
-        ]);
-      };
-    });
-    return geometries;
-  } else {
-    window.XLGIS.errors.raise(new Error("Unknown layer type '" + layer.type +  "'."),[
-      "XLGIS.layers",
-      "layer.name:"+layer.name,
-      "layer.type:" + layer.type,
-      "layer.projection:" + layer.projection,
-      "layer.displayName:" + layer.displayName
-    ]);
-  };
 };
 
-//Proj4 Wrapper for dealing with projections:
-XLGIS.projections = {};
-var projections = XLGIS.projections
-projections.listeners = {
-  "add":[]
-};
-projections.data = {
-  Earth: '+proj=longlat +datum=WGS84 +no_defs '
-};
-projections.add = function(name,projection){
-  //Save data
-  projections.data[name]=projection;
-  
-  //Call listener
-  projections.listeners["add"].forEach(function(listener){
-    listener(name,projection);
-  });
-};
-projections.on = function(eventID,func){
-  if(!projections.listeners[eventID]) projections.listeners[eventID] = [];
-  projections.listeners[eventID].push(func);
-};
-projections.project = function(srcProjection,point){
-  let EarthProjection = new Proj4.Proj(projection.data["Earth"]);
-  return proj4(new Proj4.Proj(srcProjection),EarthProjection,point);
-};
+
 
 XLGIS.forms = {
   openForm:function(form){

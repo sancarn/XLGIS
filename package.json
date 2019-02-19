@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@types/leaflet": "^1.4.2",
-    "@types/office-js": "0.0.158"
+    "@types/office-js": "0.0.158",
+    "@types/proj4": "^2.5.0"
   }
 }

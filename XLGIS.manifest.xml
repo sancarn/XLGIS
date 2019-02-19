@@ -13,7 +13,7 @@
   <DefaultSettings>
       <!-- \\PE-D0263\ ==>Cannot find ‘file://pe-d0263/Users/sancarn/Documents/GitHub/XLGIS/dist/XLGIS.html?_host_Info=Excel$Win32$16.01$en-US’. -->
       <SourceLocation 
-        DefaultValue="file://C:\Users\sancarn\Documents\GitHub\XLGIS\dist\XLGIS.html" />
+        DefaultValue="file://C:\Users\sancarn\Documents\GitHub\XLGIS\XLGIS.html" />
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
 </OfficeApp>
