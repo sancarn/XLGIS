@@ -303,7 +303,12 @@ interface IXLGISLayer {
   name: string //Name of table, name of range or range address
   displayName: string
   projection: string
-
+  options: null | {
+    geometryTypeCol:string
+    geometryCol:string
+    styleCol:string
+    projection:string
+  }
 }
 
 enum XLGISGeoType {
@@ -315,6 +320,21 @@ enum XLGISGeoType {
   Marker="MARKER",
   Image="IMAGE"
 } 
+
+interface IXLGIS_LayerOptions {
+  name:string,
+  geometryTypeCol:string,
+  geometryCol:string,
+  styleCol:string
+}
+
+class XLGIS_Layer {
+  public name : string
+  constructor(options){
+    this.name = name;
+
+  }
+}
 
 class XLGIS_Layers {
   public parent : XLGIS
@@ -350,8 +370,9 @@ class XLGIS_Layers {
   /**
    * Creates a new layer and initialises all settings
    */
-  public newLayer(layerName){
+  public newLayer(layerName : string){
     //initialise settings
+
   }
   public async getLayer(layer : IXLGISLayer) {
     let This = this;
